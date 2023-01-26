@@ -1,8 +1,10 @@
 package main
+
 //test
 import (
 	"archive/zip"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -11,30 +13,35 @@ import (
 	"path/filepath"
 
 	"encoding/csv"
+
 	"github.com/sqweek/dialog"
 )
 
 
 func main(){
+	//Pick .i6z file and prepare the filepaths
 	filename := loadfile()
-	BPRfolder :=prepareBPR(filename)
-
 	folder := filepath.Dir(filename)
+	attachmentFolder := extractFiles(filename)
+	matchKey := generateKey("csv")
+	BPRfolder :=prepareBPR(filename,matchKey)
+
+
+//Set up a logfile
 	logFilePath:= filepath.Join(folder,"log.txt")
-os.Create(logFilePath)
-logFile, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	os.Create(logFilePath)
+	logFile, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {log.Println(err.Error())}
-fmt.Fprintln(logFile,"Logfile lmao")
-log.SetOutput(logFile)
+	fmt.Fprintln(logFile,"Logfile lmao")
+	log.SetOutput(logFile)
+
+
 	tempFolder := filepath.Join(folder,"temp")
 	manifestPath := filepath.Join(tempFolder,"manifest.xml")
 
-	attachmentFolder := extractFiles(filename)
 	Bprfiles := extractInfo(manifestPath)
-	matchKey := generateKey("csv")
 	unmatchedFolder := filepath.Join(folder,"unmatched")
-	err = os.Mkdir(unmatchedFolder,os.ModePerm)
-	if err != nil {log.Println(err.Error())}
+	CreateNewFolder(unmatchedFolder)
 fmt.Println("created unmatched folder")
 
 
@@ -61,8 +68,7 @@ fmt.Println("created unmatched folder")
 			index.from = filepath.Join(attachmentFolder,Bprfiles[i].MD5) 
 			index.to = filepath.Join(unmatchedFolder,Bprfiles[i].subtype,Bprfiles[i].RealName)
 			unmatchedSubFolder := filepath.Dir(index.to)
-	err := os.Mkdir(unmatchedSubFolder,os.ModePerm)
-	if err != nil {log.Println(err.Error())}
+			CreateNewFolder(unmatchedSubFolder)
 			unmatchedIndex = append(unmatchedIndex, index)
 			unmatched++ 
 		}
@@ -91,15 +97,22 @@ func loadfile()(filename string ){
 	fmt.Println("Working directory:",folder)
 	return
 }
-func prepareBPR(i6zPath string)(bprFolderPath string ){
-	bprFolders := []string{"1 Applicant","2 Identity of the Biocidal Product","3 Physical, chemical and technical properties", "4 Physical hazards and respective characteristics", "5 Methods of detection and identification","6 Effectiveness against target organisms","7 Intended uses and exposure", "8 Toxicological profile for humans and animals","9 Ecotoxicological studies","10 Environmental fate and behaviour","11 Measures to protect humans, animals and the environment","12 Classification and labelling","13 Summary and evaluation"}
+func prepareBPR(i6zPath string, folderKey []legislationKey)(bprFolderPath string ){
+	var folders []string
+	for _, fk := range folderKey{
+		var folder string
+		folder = fk.section
+		folders = append(folders, folder)
+	}
+
+	// bprFolders := []string{"1 Applicant","2 Identity of the Biocidal Product","3 Physical, chemical and technical properties", "4 Physical hazards and respective characteristics", "5 Methods of detection and identification","6 Effectiveness against target organisms","7 Intended uses and exposure", "8 Toxicological profile for humans and animals","9 Ecotoxicological studies","10 Environmental fate and behaviour","11 Measures to protect humans, animals and the environment","12 Classification and labelling","13 Summary and evaluation"}
 
 	Folder := filepath.Dir(i6zPath)
 	bprFolderPath = filepath.Join(Folder,"BPR")
 	err := os.Mkdir(bprFolderPath,os.ModePerm)
 	if err != nil {log.Println(err.Error())}
 
-	for _, f :=range bprFolders{
+	for _, f :=range folders{
 		subfolder := filepath.Join(bprFolderPath,f)
 		err = os.Mkdir(subfolder,os.ModePerm)
 	}
@@ -273,54 +286,12 @@ for _, transfer := range copyIndex{
 	os.Remove(copyIndex[d].from)	}
 }}
 
-func matchCustomCSV(Bprfiles []fileInfo)(MatchedFiles []fileInfo){
-	IUCdefinition, err := dialog.File().Filter( ".csv").Load()	
-	if err != nil {log.Println(err.Error())}
-	file,err := os.OpenFile(IUCdefinition,os.O_RDONLY,0444)
-	if err != nil {log.Println(err.Error())}
-	defer file.Close()
-	raw:= csv.NewReader(file)
-	raw.LazyQuotes = true
-	raw.FieldsPerRecord = -1
-	output,err := raw.ReadAll()
 
-	if err != nil {log.Println(err.Error())}
-	var CSVkey []legislationKey
-
-	for r := range output{
-		var oneKey legislationKey
-		fields :=(len(output[r]))
-		if fields>2{fmt.Println(fields)
-			for i:=1; i<=fields-1;i++{
-				oneKey.section = output[r][0]
-				oneKey.XMLkey= output[r][i]
-
-				CSVkey = append(CSVkey, oneKey)
-			}
-		}else{
-			oneKey.section = output[r][0]
-			oneKey.XMLkey= output[r][1]
-			CSVkey = append(CSVkey, oneKey)
+func CreateNewFolder(path string){
+if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		err := os.Mkdir(path, os.ModePerm)
+		if err != nil {
+			log.Println(err)
 		}
-	}
-	numberOfFiles := len(Bprfiles)
-	numberOfMatches := 0 
-
-	for j := range Bprfiles{
-		Bprfiles[j].Matched = false
-		for k := range CSVkey{
-			if Bprfiles[j].subtype == CSVkey[k].XMLkey {
-				Bprfiles[j].Matched = true
-				numberOfMatches++
-				Bprfiles[j].BPRFolder = CSVkey[k].section
-			} 
-		}
-	}
-	fmt.Println("A total of ",numberOfFiles," files produced ",numberOfMatches," matches. Files unaccounted for:",numberOfFiles - numberOfMatches)
-	MatchedFiles = Bprfiles
-	return MatchedFiles
+	}	
 }
-
-
-
-
