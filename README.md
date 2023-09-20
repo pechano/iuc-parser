@@ -1,6 +1,10 @@
 # iuc-parser
 Small application to parse .i6z dossiers
 
+Binaries are available for Windows and Linux under Releases.
+
+## Building
+
 It can be built by cloning the repo and running
 ```
 go build bpr.go structs.go
