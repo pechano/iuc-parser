@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -24,38 +23,67 @@ func main(){
 	folder := filepath.Dir(filename)
 	attachmentFolder := extractFiles(filename)
 	matchKey := generateKey("csv")
-	BPRfolder :=prepareBPR(filename,matchKey)
 
 
-//Set up a logfile
+	//Set up a logfile
 	logFilePath:= filepath.Join(folder,"log.txt")
 	os.Create(logFilePath)
 	logFile, err := os.OpenFile(logFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {log.Println(err.Error())}
-	fmt.Fprintln(logFile,"Logfile lmao")
+	fmt.Fprintln(logFile,"Logfile, search and replace { with newline to get a better view")
 	log.SetOutput(logFile)
 
+	fmt.Fprintln(logFile,"The keys imported from .csv:") //log what the files are
+	fmt.Fprintln(logFile,matchKey) //log what the files are
 
 	tempFolder := filepath.Join(folder,"temp")
 	manifestPath := filepath.Join(tempFolder,"manifest.xml")
 
 	Bprfiles := extractInfo(manifestPath)
+
+
+
+
+
+
+
+	fmt.Fprintln(logFile,"Filenames from the manifest:") //log what the files are
+	fmt.Fprintln(logFile,Bprfiles) //log what the files are
+
 	unmatchedFolder := filepath.Join(folder,"unmatched")
 	CreateNewFolder(unmatchedFolder)
-fmt.Println("created unmatched folder")
+	fmt.Println("created unmatched folder")
 
 
 	Bprfiles = matchFiles(Bprfiles,matchKey) //this updates the Bprfiles
 	//Create an index of files to be copied
+
+var parents []string
+	for _, m := range Bprfiles{
+		parents = append(parents, m.Parent)
+	}
+
+	fmt.Fprintln(logFile,"All compounds and mixtures in this dossier:")
+	fmt.Fprintln(logFile,parents)
+	parents = RemoveDuplicates(parents)//problemet er HER med denne funktion. Det er kun den første entry der kommer med. alle de andre efterlades bare.
+fmt.Println(parents)
+
+	fmt.Fprintln(logFile,"Unique compounds and mixtures in this dossier:")
+	fmt.Fprintln(logFile,parents)
+
+	BPRfolder :=prepareBPR(filename,matchKey,parents)
+
+	fmt.Fprintln(logFile,"Matched filenames from the manifest:") //log what the files are
+	fmt.Fprintln(logFile,Bprfiles) //log what the files are
 	var copyIndex []transferInstructions
 
 	for i :=0; i<len(Bprfiles);i++{
 
 		if Bprfiles[i].Matched == true{
-		var index transferInstructions
-		index.from = filepath.Join(attachmentFolder,Bprfiles[i].MD5) 
-		index.to = filepath.Join(BPRfolder,Bprfiles[i].BPRFolder,Bprfiles[i].RealName)
-		copyIndex = append(copyIndex, index)
+			var index transferInstructions
+			index.from = filepath.Join(attachmentFolder,Bprfiles[i].MD5) 
+			index.to = filepath.Join(BPRfolder,Bprfiles[i].BPRFolder,Bprfiles[i].RealName)
+			copyIndex = append(copyIndex, index)
 	}}
 	copyFromIndex(copyIndex,false)	
 	//Create an index of files that were not matched.
@@ -75,14 +103,13 @@ fmt.Println("created unmatched folder")
 	}
 	if unmatched >0{
 
- fmt.Println("Moving ",unmatched," unmatched files.")
+		fmt.Println("Moving ",unmatched," unmatched files.")
 		copyFromIndex(unmatchedIndex,true)
 	}
 
 	os.RemoveAll(tempFolder)
 
-defer logFile.Close()
-
+	defer logFile.Close()
 }
 
 
@@ -97,7 +124,7 @@ func loadfile()(filename string ){
 	fmt.Println("Working directory:",folder)
 	return
 }
-func prepareBPR(i6zPath string, folderKey []legislationKey)(bprFolderPath string ){
+func prepareBPR(i6zPath string, folderKey []legislationKey, subfolders []string)(bprFolderPath string ){
 	var folders []string
 	for _, fk := range folderKey{
 		var folder string
@@ -106,9 +133,10 @@ func prepareBPR(i6zPath string, folderKey []legislationKey)(bprFolderPath string
 	}
 
 	// bprFolders := []string{"1 Applicant","2 Identity of the Biocidal Product","3 Physical, chemical and technical properties", "4 Physical hazards and respective characteristics", "5 Methods of detection and identification","6 Effectiveness against target organisms","7 Intended uses and exposure", "8 Toxicological profile for humans and animals","9 Ecotoxicological studies","10 Environmental fate and behaviour","11 Measures to protect humans, animals and the environment","12 Classification and labelling","13 Summary and evaluation"}
+	for _, subfolder := range subfolders{
 
 	Folder := filepath.Dir(i6zPath)
-	bprFolderPath = filepath.Join(Folder,"BPR")
+	bprFolderPath = filepath.Join(Folder,subfolder)
 	err := os.Mkdir(bprFolderPath,os.ModePerm)
 	if err != nil {log.Println(err.Error())}
 
@@ -116,7 +144,7 @@ func prepareBPR(i6zPath string, folderKey []legislationKey)(bprFolderPath string
 		subfolder := filepath.Join(bprFolderPath,f)
 		err = os.Mkdir(subfolder,os.ModePerm)
 	}
-	fmt.Println("BPR Folders prepared")
+	fmt.Println("BPR Folders prepared")}
 	return
 }
 func extractFiles(i6zPath string)(attachmentFolder string){
@@ -136,14 +164,14 @@ func extractFiles(i6zPath string)(attachmentFolder string){
 		//
 		outFile, err := os.OpenFile(extractPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 		if err != nil {
-	if err != nil {log.Println(err.Error())}
+			if err != nil {log.Println(err.Error())}
 		}
 		fileInArchive, err := f.Open()
 		if err != nil {
-	if err != nil {log.Println(err.Error())}
+			if err != nil {log.Println(err.Error())}
 		}
 		if _, err := io.Copy(outFile, fileInArchive); err != nil {
-	if err != nil {log.Println(err.Error())}
+			if err != nil {log.Println(err.Error())}
 		}
 
 		outFile.Close()
@@ -161,7 +189,7 @@ func extractInfo(manifestPath string)(files []fileInfo){
 	fmt.Println("Opened manifest.xml")
 	defer manifest.Close()
 	// read our opened xmlFile as a byte array.
-	byteValue, _ := ioutil.ReadAll(manifest)
+	byteValue, _ := io.ReadAll(manifest)
 	// we initialize our Users array
 	var dossier dossier
 	// we unmarshal our byteArray which contains our
@@ -175,9 +203,33 @@ func extractInfo(manifestPath string)(files []fileInfo){
 			if  f.Container == g.Container {
 				var file fileInfo
 				file.UUID = f.Container
+				//some documents do not have their own category, as they are linked to a parent document. 
 				file.subtype = g.Category
+				if g.Category == ""{
+					for y, doc := range dossier.Document {
+						for z, link := range doc.Links{
+							if file.UUID == link.RefUUID {file.subtype = doc.Category}
+							z++
+						}
+						y++
+					}
+				}	
+
+				//some documents do not have their own representation, as they are linked to a parent document. 
+
+				if g.Parent == ""{g.Parent = g.Alternate}
+				if g.Parent == ""{
+					for y, doc := range dossier.Document {
+						for z, link := range doc.Links{
+							if file.UUID == link.RefUUID {file.Parent = doc.Parent}
+							z++
+						}
+						y++
+					}
+				}
 				file.MD5 = filepath.Base(f.MD5Filename.LinkedDoc)
 				file.RealName = f.RealFilename
+				file.Parent = g.Parent
 				Files = append(Files, file)
 				i++
 			} 
@@ -185,6 +237,8 @@ func extractInfo(manifestPath string)(files []fileInfo){
 
 		j++
 	}
+
+
 	fmt.Println("Dossier info extracted from XML")
 	return Files
 }
@@ -193,52 +247,54 @@ func extractInfo(manifestPath string)(files []fileInfo){
 func generateKey(csvFile string)(CSVkey []legislationKey){
 	if csvFile == "default"{
 		fmt.Println("Using default BPR definitions")
-	bprFolders := []string{"1 Applicant","2 Identity of the Biocidal Product","3 Physical, chemical and technical properties", "4 Physical hazards and respective characteristics", "5 Methods of detection and identification","6 Effectiveness against target organisms","7 Intended uses and exposure", "8 Toxicological profile for humans and animals","9 Ecotoxicological studies","10 Environmental fate and behaviour","11 Measures to protect humans, animals and the environment","12 Classification and labelling","13 Summary and evaluation"}
+		bprFolders := []string{"1 Applicant","2 Identity of the Biocidal Product","3 Physical, chemical and technical properties", "4 Physical hazards and respective characteristics", "5 Methods of detection and identification","6 Effectiveness against target organisms","7 Intended uses and exposure", "8 Toxicological profile for humans and animals","9 Ecotoxicological studies","10 Environmental fate and behaviour","11 Measures to protect humans, animals and the environment","12 Classification and labelling","13 Summary and evaluation"}
 
-	bprTypes := []string{"Sites","Identifiers","GeneralInformation","Flammability","AnalyticalMethods","EffectivenessAgainstTargetOrganisms","BioIntendedUsesExposure","ToxicologicalProfile","EcotoxicologicalInformation","EnvironmentalFateAndPathways","ProtectionMeasures","Ghs","BioSummaryEvaluation"}
+		bprTypes := []string{"Sites","Identifiers","GeneralInformation","Flammability","AnalyticalMethods","EffectivenessAgainstTargetOrganisms","BioIntendedUsesExposure","ToxicologicalProfile","EcotoxicologicalInformation","EnvironmentalFateAndPathways","ProtectionMeasures","Ghs","BioSummaryEvaluation"}
 
-	var defaultKey []legislationKey
-	for i:=0; i<len(bprFolders); i++{
-		var key legislationKey
-		key.XMLkey=bprTypes[i]
-		key.section=bprFolders[i]
-	defaultKey = append(defaultKey, key)
-	}
+		var defaultKey []legislationKey
+		for i:=0; i<len(bprFolders); i++{
+			var key legislationKey
+			key.XMLkey=bprTypes[i]
+			key.section=bprFolders[i]
+			defaultKey = append(defaultKey, key)
+		}
 		return defaultKey
 	} else {
 
-	IUCdefinition, err := dialog.File().Filter( ".csv").Load()	
-	if err != nil {log.Println(err.Error())}
-	file,err := os.OpenFile(IUCdefinition,os.O_RDONLY,0444)
-	if err != nil {log.Println(err.Error())}
-	defer file.Close()
-	raw:= csv.NewReader(file)
-	raw.LazyQuotes = true
-	raw.FieldsPerRecord = -1
-	output,err := raw.ReadAll()
-	if err != nil {
-	if err != nil {log.Println(err.Error())}
-	}   
+		IUCdefinition, err := dialog.File().Filter( ".csv").Load()	
+		if err != nil {log.Println(err.Error())}
+		file,err := os.OpenFile(IUCdefinition,os.O_RDONLY,0444)
+		if err != nil {log.Println(err.Error())}
+		defer file.Close()
+		raw:= csv.NewReader(file)
+		raw.LazyQuotes = true
+		raw.FieldsPerRecord = -1
+		output,err := raw.ReadAll()
+		if err != nil {
+			if err != nil {log.Println(err.Error())}
+		}   
 
-	var CSVkey []legislationKey
+		var CSVkey []legislationKey
 
-	for r := range output{
-		var oneKey legislationKey
-		fields :=(len(output[r]))
-		if fields>2{
-			for i:=1; i<=fields-1;i++{
+		for r := range output{
+			var oneKey legislationKey
+			fields :=(len(output[r]))
+			if fields>2{
+				for i:=1; i<=fields-1;i++{
+					oneKey.section = output[r][0]
+					oneKey.XMLkey= output[r][i]
+
+					CSVkey = append(CSVkey, oneKey)
+				}
+			}else{
 				oneKey.section = output[r][0]
-				oneKey.XMLkey= output[r][i]
-
+				oneKey.XMLkey= output[r][1]
 				CSVkey = append(CSVkey, oneKey)
 			}
-		}else{
-			oneKey.section = output[r][0]
-			oneKey.XMLkey= output[r][1]
-			CSVkey = append(CSVkey, oneKey)
 		}
-	}
+
 		return CSVkey
+
 	}
 }
 func matchFiles(Bprfiles []fileInfo, CSVkey []legislationKey)(MatchedFiles []fileInfo){
@@ -263,35 +319,60 @@ func matchFiles(Bprfiles []fileInfo, CSVkey []legislationKey)(MatchedFiles []fil
 }
 
 func copyFromIndex(copyIndex []transferInstructions, remove bool)(){
-for _, transfer := range copyIndex{
+	for _, transfer := range copyIndex{
 
 
 		src := transfer.from
 		dst := transfer.to 
 
 		fin, err := os.Open(src)
-	if err != nil {log.Println(err.Error())}
+		if err != nil {log.Println(err.Error())}
 		defer fin.Close()
 
 		fout, err := os.Create(dst)
 		defer fout.Close()
 
-	if err != nil {log.Println(err.Error())}
+		if err != nil {log.Println(err.Error())}
 		_, err = io.Copy(fout, fin)
 
-	if err != nil {log.Println(err.Error())}
+		if err != nil {log.Println(err.Error())}
 	}
 	if remove == true{
-	for d := range copyIndex{
-	os.Remove(copyIndex[d].from)	}
-}}
+		for d := range copyIndex{
+			os.Remove(copyIndex[d].from)	}
+	}}
 
 
 func CreateNewFolder(path string){
-if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		err := os.Mkdir(path, os.ModePerm)
 		if err != nil {
 			log.Println(err)
 		}
 	}	
+}
+
+	type uni struct {
+		name string
+		duplicate int
+	}
+
+
+func RemoveDuplicates(input []string)(Output []string){
+var temp []string
+	for _, p := range input{
+		if len(temp) == 0 {
+			if p == "" {continue}
+			temp = append(temp, p)
+			fmt.Println("added "+p+" to the output")
+			continue
+		} else {
+			for _, d := range temp {
+				if p == d {break} else {continue}
+			temp = append(temp, p)
+				fmt.Println("also added "+p+" to the output")
+			}
+		}
+	}
+	return temp 
 }

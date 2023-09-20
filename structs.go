@@ -14,6 +14,7 @@ type fileInfo struct{
 	RealName string
 	BPRFolder string
 	Matched bool 
+	Parent string
 }
 
 type Info struct{
@@ -38,9 +39,17 @@ type attachLink struct {
 	LinkedDoc string `xml:"href,attr"`
 }
 type document struct{
+
 	DocType string `xml:"type"`
 	Container string   `xml:"uuid"`
 	Category string   `xml:"subtype"`
+	Links []link `xml:"links>link"`
+	Parent string `xml:"representation>parent>name"`
+	Alternate string `xml:"representation>reference-substance>name"`
+}
+
+type link struct {
+	RefUUID string `xml:"ref-uuid"`
 }
 
 type legislationKey struct{
